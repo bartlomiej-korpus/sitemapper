@@ -1,6 +1,6 @@
 {
-  "name": "sitemapper",
-  "version": "4.1.6",
+  "name": "@bartlomiej-korpus/sitemapper",
+  "version": "5.0.0",
   "description": "Parser for XML Sitemaps to be used with Robots.txt and web crawlers",
   "keywords": [
     "parse",
@@ -11,10 +11,10 @@
     "crawlers",
     "webcrawler"
   ],
-  "homepage": "http://github.com/seantomburke/sitemapper",
+  "homepage": "https://github.com/bartlomiej-korpus/sitemapper",
   "tonicExampleFilename": "example.js",
   "bugs": {
-    "url": "http://github.com/seantomburke/sitemapper/issues"
+    "url": "https://github.com/bartlomiej-korpus/sitemapper/issues"
   },
   "license": "MIT",
   "files": [
@@ -25,7 +25,11 @@
   "types": "./sitemapper.d.ts",
   "repository": {
     "type": "git",
-    "url": "git://github.com/seantomburke/sitemapper.git"
+    "url": "git+https://github.com/bartlomiej-korpus/sitemapper.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
   },
   "author": {
     "name": "Sean Thomas Burke",
