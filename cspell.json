@@ -16,11 +16,12 @@
     "effectful",
     "clippy",
     "esmodules",
+    "gunzip",
     "gzipped",
-    "hpagent",
     "sdch",
     "seantburke",
-    "sitemapper"
+    "sitemapper",
+    "undici"
   ],
   "allowCompoundWords": true,
   "flagWords": [],

@@ -7,9 +7,23 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
-import got from 'got';
-import zlib from 'zlib';
+import ky from 'ky';
 import pLimit from 'p-limit';
+
+/**
+ * Decompress a gzip-compressed Uint8Array using the runtime-agnostic
+ * DecompressionStream API (available in Node 18+, Cloudflare Workers,
+ * browsers, Deno, and Bun).
+ *
+ * @param {Uint8Array} input - gzip-compressed bytes
+ * @returns {Promise<Uint8Array>} decompressed bytes
+ */
+async function gunzipBytes(input) {
+  const ds = new DecompressionStream('gzip');
+  const decompressedStream = new Response(input).body.pipeThrough(ds);
+  const out = await new Response(decompressedStream).arrayBuffer();
+  return new Uint8Array(out);
+}
 
 /**
  * @typedef {Object} Sitemapper
@@ -24,9 +38,8 @@ export default class Sitemapper {
    * @params {boolean} [options.debug] - Enables/Disables additional logging
    * @params {integer} [options.concurrency] - The number of concurrent sitemaps to crawl (e.g. 2 will crawl no more than 2 sitemaps at the same time)
    * @params {integer} [options.retries] - The maximum number of retries to attempt when crawling fails (e.g. 1 for 1 retry, 2 attempts in total)
-   * @params {boolean} [options.rejectUnauthorized] - If true (default), it will throw on invalid certificates, such as expired or self-signed ones.
    * @params {lastmod} [options.lastmod] - the minimum lastmod value for urls
-   * @params {hpagent.HttpProxyAgent|hpagent.HttpsProxyAgent} [options.proxyAgent] - instance of npm "hpagent" HttpProxyAgent or HttpsProxyAgent to be passed to npm "got"
+   * @params {typeof fetch} [options.customFetch] - Optional custom fetch implementation to use instead of the global fetch. Useful for Node-side proxy support (e.g. undici's fetch bound to a ProxyAgent) or for stubbing in tests.
    * @params {Array<RegExp>} [options.exclusions] - Array of regex patterns to exclude URLs
    *
    * @example let sitemap = new Sitemapper({
@@ -40,16 +53,13 @@ export default class Sitemapper {
     const settings = options || { requestHeaders: {} };
     this.url = settings.url;
     this.timeout = settings.timeout || 15000;
-    this.timeoutTable = {};
     this.lastmod = settings.lastmod || 0;
     this.requestHeaders = settings.requestHeaders;
     this.debug = settings.debug;
     this.concurrency = settings.concurrency || 10;
     this.retries = settings.retries || 0;
-    this.rejectUnauthorized =
-      settings.rejectUnauthorized === false ? false : true;
     this.fields = settings.fields || false;
-    this.proxyAgent = settings.proxyAgent || {};
+    this.customFetch = settings.customFetch;
     this.exclusions = settings.exclusions || [];
   }
 
@@ -181,97 +191,60 @@ export default class Sitemapper {
    * @returns {Promise<ParseData>}
    */
   async parse(url = this.url) {
-    // setup the response options for the got request
     const requestOptions = {
-      method: 'GET',
-      decompress: true,
-      responseType: 'buffer',
       headers: this.requestHeaders,
-      https: {
-        rejectUnauthorized: this.rejectUnauthorized,
-      },
-      agent: this.proxyAgent,
+      timeout: this.timeout,
+      retry: 0,
     };
+    if (this.customFetch) {
+      requestOptions.fetch = this.customFetch;
+    }
 
     try {
-      // create a request Promise with the url and request options
-      const requester = got.get(url, requestOptions);
+      const response = await ky.get(url, requestOptions);
 
-      // initialize the timeout method based on the URL, and pass the request object.
-      this.initializeTimeout(url, requester);
+      const buf = new Uint8Array(await response.arrayBuffer());
 
-      // get the response from the requester promise
-      const response = await requester;
-
-      // if the response does not have a successful status code then clear the timeout for this url.
-      if (!response || response.statusCode !== 200) {
-        clearTimeout(this.timeoutTable[url]);
-        const statusCode = response ? response.statusCode : 0;
-        const statusMessage = response ? response.statusMessage : 'No response';
-        return {
-          error: `HTTP Error: ${statusCode} ${statusMessage}`,
-          data: response,
-        };
-      }
-
-      // got's decompress option handles HTTP Content-Encoding (e.g. gzip),
+      // Standard fetch decodes HTTP Content-Encoding (e.g. gzip) automatically,
       // but raw .gz files served without Content-Encoding need manual decompression.
-      let responseBody = response.body;
-      if (
-        response.body.length > 2 &&
-        response.body[0] === 0x1f &&
-        response.body[1] === 0x8b
-      ) {
-        responseBody = zlib.gunzipSync(response.body);
+      let bodyBytes = buf;
+      if (buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+        bodyBytes = await gunzipBytes(buf);
       }
 
-      // Parse XML using fast-xml-parser
+      const xmlText = new TextDecoder('utf-8').decode(bodyBytes);
+
       const parser = new XMLParser({
         isArray: (tagName) =>
           ['sitemap', 'url'].some((value) => value === tagName),
         removeNSPrefix: true,
       });
 
-      const data = parser.parse(responseBody.toString());
+      const data = parser.parse(xmlText);
 
-      // return the results
       return { error: null, data };
     } catch (error) {
-      // If the request was canceled notify the user of the timeout
-      if (error.name === 'CancelError') {
+      if (error.name === 'TimeoutError') {
         return {
           error: `Request timed out after ${this.timeout} milliseconds for url: '${url}'`,
           data: error,
         };
       }
 
-      // If an HTTPError include error http code
       if (error.name === 'HTTPError') {
+        const status = error.response && error.response.status;
+        const statusText = error.response && error.response.statusText;
         return {
-          error: `HTTP Error occurred: ${error.message}`,
+          error: `HTTP Error occurred: Response code ${status || 0} (${statusText || ''})`,
           data: error,
         };
       }
 
-      // Otherwise notify of another error
       return {
         error: `Error occurred: ${error.name}`,
         data: error,
       };
     }
-  }
-
-  /**
-   * Timeouts are necessary for large xml trees. This will cancel the call if the request is taking
-   * too long, but will still allow the promises to resolve.
-   *
-   * @private
-   * @param {string} url - url to use as a hash in the timeoutTable
-   * @param {Promise} requester - the promise that creates the web request to the url
-   */
-  initializeTimeout(url, requester) {
-    // this will throw a CancelError which will be handled in the parent that calls this method.
-    this.timeoutTable[url] = setTimeout(() => requester.cancel(), this.timeout);
   }
 
   /**
@@ -285,8 +258,6 @@ export default class Sitemapper {
   async crawl(url, retryIndex = 0) {
     try {
       const { error, data } = await this.parse(url);
-      // The promise resolved, remove the timeout
-      clearTimeout(this.timeoutTable[url]);
 
       if (error) {
         // Handle errors during sitemap parsing / request
@@ -490,7 +461,7 @@ export default class Sitemapper {
  *
  * @typedef {Object} ParseData
  *
- * @property {Error} error that either comes from fast-xml-parser or `got` or custom error
+ * @property {Error} error that either comes from fast-xml-parser or `ky` or custom error
  * @property {Object} data
  * @property {string} data.url - URL of sitemap
  * @property {Array} data.urlset - Array of returned URLs
@@ -526,7 +497,7 @@ export default class Sitemapper {
  *   ],
  *   errors: [
  *      {
- *        type: 'CancelError',
+ *        type: 'TimeoutError',
  *        url: 'https://www.walmart.com/sitemap_tp1.xml',
  *        retries: 0
  *      },
@@ -555,7 +526,7 @@ export default class Sitemapper {
  * @typedef {ErrorData[]} ErrorDataArray
  * @example [
  *    {
- *      type: 'CancelError',
+ *      type: 'TimeoutError',
  *      url: 'https://www.walmart.com/sitemap_tp1.xml',
  *      retries: 0
  *    },
@@ -576,7 +547,7 @@ export default class Sitemapper {
  * @property {string} url - The sitemap URL which returned the error
  * @property {number} errors - The total number of retries attempted after receiving the first error
  * @example {
- *    type: 'CancelError',
+ *    type: 'TimeoutError',
  *    url: 'https://www.walmart.com/sitemap_tp1.xml',
  *    retries: 0
  * }

@@ -11,38 +11,6 @@ describe('Sitemapper Advanced Tests', function () {
     sitemapper = new Sitemapper();
   });
 
-  describe('initializeTimeout', function () {
-    it('should set up a timeout that cancels a request', async function () {
-      // Create a mock requester with a cancel method
-      const mockRequester = {
-        cancel: function () {
-          this.canceled = true;
-        },
-        canceled: false,
-      };
-
-      // Set a very short timeout
-      sitemapper.timeout = 1;
-
-      // Call initializeTimeout
-      (sitemapper as any).initializeTimeout(
-        'https://example.com/timeout-test',
-        mockRequester
-      );
-
-      // Wait for the timeout to trigger
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Check if cancel was called
-      mockRequester.canceled.should.be.true();
-
-      // Clean up
-      clearTimeout(
-        (sitemapper as any).timeoutTable['https://example.com/timeout-test']
-      );
-    });
-  });
-
   describe('fetch with multiple sitemaps', function () {
     it('should handle errors in some child sitemaps while succeeding with others', async function () {
       this.timeout(10000);

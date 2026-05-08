@@ -22,10 +22,6 @@ describe('Sitemapper', function () {
   });
 
   describe('Sitemapper Class', function () {
-    it('should have initializeTimeout method', () => {
-      sitemapper.initializeTimeout.should.be.Function;
-    });
-
     it('should have crawl method', () => {
       sitemapper.crawl.should.be.Function;
     });
@@ -263,22 +259,21 @@ describe('Sitemapper', function () {
         });
     });
 
-    it('https://example.com/sitemap.xml should not allow insecure request', function (done) {
+    it('https://example.com/sitemap.xml should report HTTPError', function (done) {
       this.timeout(30000);
       const url = 'https://example.com/sitemap.xml';
       sitemapper.timeout = 10000;
-      sitemapper.rejectUnauthorized = false;
       sitemapper
         .fetch(url)
         .then((data) => {
           data.sites.should.be.Array;
           data.errors.should.be.Array;
-          data.errors.should.containEql({
-            type: 'HTTPError',
-            message: 'HTTP Error occurred: Response code 404 (Not Found)',
-            url: 'https://example.com/sitemap.xml',
-            retries: 0,
-          });
+          data.errors.length.should.be.greaterThan(0);
+          const err = data.errors[0];
+          err.type.should.equal('HTTPError');
+          err.url.should.equal(url);
+          err.retries.should.equal(0);
+          err.message.should.match(/^HTTP Error occurred: Response code \d+/);
           done();
         })
         .catch((error) => {

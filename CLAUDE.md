@@ -66,10 +66,10 @@ rtk npx sitemapper https://example.com/sitemap.xml --timeout=5000
 The `Sitemapper` class handles XML sitemap parsing with these key responsibilities:
 
 1. **HTTP Request Management**
-   - Uses `got` (v13) for HTTP requests with configurable timeout
-   - Supports proxy via `hpagent`
-   - `got`'s `decompress: true` handles HTTP Content-Encoding gzip; raw `.gz` files are detected via magic bytes and decompressed with `zlib.gunzipSync`
-   - Implements retry logic for failed requests
+   - Uses `ky` (v1) for HTTP requests with configurable timeout. Works on Node 18+, Cloudflare Workers, browsers, Deno, and Bun.
+   - Optional `customFetch` option lets users inject a custom Fetch implementation (e.g. `undici.fetch` bound to a `ProxyAgent` for Node-side proxies).
+   - Standard `fetch` decodes HTTP `Content-Encoding: gzip` automatically; raw `.gz` files are detected via magic bytes and decompressed with the runtime-agnostic `DecompressionStream` API.
+   - Retry logic is handled in `crawl()` (we pass `retry: 0` to `ky` and count attempts ourselves).
 
 2. **XML Parsing Flow**
    - `fetch()` → Public API entry point

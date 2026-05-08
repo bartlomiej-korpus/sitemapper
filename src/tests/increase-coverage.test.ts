@@ -20,14 +20,6 @@ describe('Sitemapper Increased Coverage Tests', function () {
     });
   });
 
-  describe('Parse method edge cases', function () {
-    it('should handle non-200 status codes', async function () {
-      // We'll test this through the response parsing test instead
-      // since mocking got directly causes TypeScript issues
-      true.should.be.true();
-    });
-  });
-
   describe('Crawl method edge cases', function () {
     it('should log debug message when finding sitemapindex', async function () {
       const debugSitemapper = new Sitemapper({
@@ -246,70 +238,6 @@ describe('Sitemapper Increased Coverage Tests', function () {
           resolve(undefined);
         });
       });
-    });
-  });
-
-  describe('Response parsing with non-200 status', function () {
-    it('should handle response with statusCode !== 200', async function () {
-      // Create a test by mocking the internal parse flow
-      const testMapper = new Sitemapper();
-
-      // Mock parse to simulate the full flow including timeout handling
-      const originalParse = testMapper.parse;
-      testMapper.parse = async function (url: string) {
-        // Set up the timeout table entry that parse would create
-        this.timeoutTable = this.timeoutTable || {};
-        this.timeoutTable[url] = setTimeout(() => {}, this.timeout);
-
-        try {
-          // Simulate the parse method's internal flow
-          const requestOptions = {
-            method: 'GET' as const,
-            resolveWithFullResponse: true,
-            gzip: true,
-            responseType: 'buffer' as const,
-            headers: this.requestHeaders || {},
-            https: {
-              rejectUnauthorized: this.rejectUnauthorized !== false,
-            },
-            agent: this.proxyAgent || {},
-          };
-
-          // Create a mock requester that immediately resolves with non-200 response
-          const mockRequester = {
-            cancel: () => {},
-          };
-
-          // Call initializeTimeout as the real parse would
-          this.initializeTimeout(url, mockRequester);
-
-          // Simulate response with non-200 status
-          const response = {
-            statusCode: 503,
-            error: 'Service Unavailable',
-            body: Buffer.from(''),
-            rawBody: Buffer.from(''),
-          };
-
-          // This is the code path we want to test - non-200 response
-          if (!response || response.statusCode !== 200) {
-            clearTimeout(this.timeoutTable[url]);
-            return { error: response.error, data: response };
-          }
-
-          // This shouldn't be reached
-          return { error: null, data: {} };
-        } catch (error) {
-          return { error: 'Error occurred', data: error };
-        }
-      };
-
-      const result = await testMapper.parse('https://example.com/503.xml');
-      result.should.have.property('error').which.equals('Service Unavailable');
-      result.should.have.property('data');
-      result.data.should.have.property('statusCode').which.equals(503);
-
-      testMapper.parse = originalParse;
     });
   });
 

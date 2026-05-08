@@ -3,8 +3,6 @@ import Sitemapper, {
   SitemapperResponse,
   SitemapperErrorData,
 } from '../../sitemapper';
-// @ts-ignore
-import { HttpsProxyAgent } from 'hpagent';
 
 const sitemapper = new Sitemapper({
   url: 'https://example.com/sitemap.xml',
@@ -12,7 +10,6 @@ const sitemapper = new Sitemapper({
   debug: false,
   concurrency: 5,
   retries: 1,
-  rejectUnauthorized: true,
   lastmod: Date.now() - 24 * 60 * 60 * 1000, // 1 day ago
   exclusions: [/exclude-this/],
 });
@@ -20,17 +17,14 @@ const sitemapper = new Sitemapper({
 async function testTypes() {
   try {
     // Check constructor options type
-    const options = {
+    const options: SitemapperOptions = {
       url: 'https://test.com/sitemap.xml',
       timeout: 1000,
       lastmod: 0,
       concurrency: 1,
       retries: 0,
       debug: true,
-      rejectUnauthorized: false,
-      proxyAgent: new HttpsProxyAgent({
-        proxy: 'http://localhost:8080',
-      }),
+      customFetch: globalThis.fetch,
       exclusions: [/test/],
     };
     const sitemapperWithOptions = new Sitemapper(options);

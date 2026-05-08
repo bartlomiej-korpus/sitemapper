@@ -1,5 +1,3 @@
-import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
-
 export interface SitemapperSiteData {
   loc: string;
   lastmod?: string;
@@ -41,13 +39,12 @@ export interface SitemapperOptions {
   concurrency?: number;
   debug?: boolean;
   lastmod?: number;
-  rejectUnauthorized?: boolean;
   requestHeaders?: { [name: string]: string };
   retries?: number;
   timeout?: number;
   url?: string;
   fields?: SitemapperFields;
-  proxyAgent?: HttpProxyAgent | HttpsProxyAgent;
+  customFetch?: typeof fetch;
   exclusions?: RegExp[];
 }
 
@@ -60,14 +57,11 @@ declare class Sitemapper {
   requestHeaders?: { [name: string]: string };
   concurrency?: number;
   retries?: number;
-  rejectUnauthorized?: boolean;
   exclusions?: RegExp[];
-  proxyAgent?: any;
-  timeoutTable: { [url: string]: NodeJS.Timeout };
+  customFetch?: typeof fetch;
 
   constructor(options?: SitemapperOptions);
 
-  private initializeTimeout(url: string, requester: any): void;
   private crawl(url: string, retryIndex?: number): Promise<any>;
   private parse(url: string): Promise<any>;
   isExcluded(url: string): boolean;

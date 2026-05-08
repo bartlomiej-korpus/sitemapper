@@ -28,7 +28,9 @@
 
 ## 📋 Overview
 
-Sitemapper is a Node.js module that makes it easy to parse XML sitemaps. It supports single sitemaps, sitemap indexes with multiple sitemaps, and various sitemap formats including image and video sitemaps.
+Sitemapper is a runtime-agnostic module that makes it easy to parse XML sitemaps. It supports single sitemaps, sitemap indexes with multiple sitemaps, and various sitemap formats including image and video sitemaps.
+
+It runs on Node.js 18+, Cloudflare Workers, browsers, Deno, and Bun — built on the standard `fetch` API (via `ky`) and `DecompressionStream`, with no Node-only dependencies.
 
 ## 🚀 Installation
 
@@ -114,11 +116,17 @@ async function parseSitemap() {
 parseSitemap();
 ```
 
-### Advanced Example with Proxy
+### Advanced Example with a Custom Fetch (Node-side proxy via undici)
+
+Sitemapper uses the standard `fetch` API under the hood, so there is no built-in
+proxy option. To route requests through a proxy on Node, supply a custom fetch
+bound to undici's `ProxyAgent`:
 
 ```javascript
 import Sitemapper from 'sitemapper';
-import { HttpsProxyAgent } from 'hpagent';
+import { ProxyAgent, fetch as undiciFetch } from 'undici';
+
+const dispatcher = new ProxyAgent('http://localhost:8080');
 
 const sitemapper = new Sitemapper({
   url: 'https://gosla.sh/sitemap.xml',
@@ -126,9 +134,7 @@ const sitemapper = new Sitemapper({
   concurrency: 5,
   retries: 2,
   debug: true,
-  proxyAgent: new HttpsProxyAgent({
-    proxy: 'http://localhost:8080',
-  }),
+  customFetch: (input, init) => undiciFetch(input, { ...init, dispatcher }),
   requestHeaders: {
     'User-Agent': 'Mozilla/5.0 (compatible; SitemapperBot/1.0)',
   },
@@ -190,12 +196,6 @@ Sitemapper can be customized with the following options:
       <td>Enable debug logging</td>
     </tr>
     <tr>
-      <td><code>rejectUnauthorized</code></td>
-      <td>Boolean</td>
-      <td><code>true</code></td>
-      <td>Reject invalid SSL certificates (like self-signed or expired)</td>
-    </tr>
-    <tr>
       <td><code>requestHeaders</code></td>
       <td>Object</td>
       <td><code>{}</code></td>
@@ -208,10 +208,10 @@ Sitemapper can be customized with the following options:
       <td>Only return URLs with lastmod timestamp newer than this value</td>
     </tr>
     <tr>
-      <td><code>proxyAgent</code></td>
-      <td>HttpProxyAgent | HttpsProxyAgent</td>
-      <td><code>undefined</code></td>
-      <td>Instance of <code>hpagent</code> for proxy support</td>
+      <td><code>customFetch</code></td>
+      <td><code>typeof fetch</code></td>
+      <td><code>globalThis.fetch</code></td>
+      <td>Custom fetch implementation. Useful for Node-side proxy support via undici, or for stubbing in tests.</td>
     </tr>
     <tr>
       <td><code>exclusions</code></td>
